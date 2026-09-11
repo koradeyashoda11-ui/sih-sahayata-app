@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-cream-100 font-sans text-primary-900 antialiased;
+  }
+
+  /* Larger base text for accessibility */
+  p, span, button, label {
+    @apply text-base;
+  }
+}
+
+@layer utilities {
+  .touch-target {
+    @apply min-h-[56px] min-w-[56px];
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Custom scrollbar for a softer feel */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d8b4;
+  border-radius: 3px;
+}
