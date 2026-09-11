@@ -18,27 +18,34 @@ const COLORS: Record<ReminderType, { bg: string; text: string; accent: string }>
   doctor: { bg: 'bg-accent-100', text: 'text-accent-800', accent: 'bg-accent-500' },
 };
 
+// Each entry MUST have a unique title so the deduplication key (title::scheduled_time)
+// and the REMINDER_DISPLAY_KEY lookup both work correctly.
 const DEFAULT_REMINDERS: Omit<Reminder, 'id' | 'created_at' | 'completed_at'>[] = [
-  { type: 'medicine', title: 'Take Morning Medicine', completed: false, scheduled_time: '8:00 AM' },
-  { type: 'water', title: 'Drink a Glass of Water', completed: false, scheduled_time: '10:00 AM' },
-  { type: 'medicine', title: 'Take Afternoon Medicine', completed: false, scheduled_time: '1:00 PM' },
-  { type: 'water', title: 'Drink a Glass of Water', completed: false, scheduled_time: '3:00 PM' },
-  { type: 'doctor', title: 'Doctor Appointment — Dr. Sharma', completed: false, scheduled_time: '4:30 PM' },
-  { type: 'water', title: 'Drink a Glass of Water', completed: false, scheduled_time: '6:00 PM' },
-  { type: 'medicine', title: 'Take Evening Medicine', completed: false, scheduled_time: '8:00 PM' },
+  { type: 'medicine', title: 'Take Morning Medicine',           completed: false, scheduled_time: '8:00 AM'  },
+  { type: 'water',    title: 'Drink Morning Water',             completed: false, scheduled_time: '10:00 AM' },
+  { type: 'medicine', title: 'Take Afternoon Medicine',         completed: false, scheduled_time: '1:00 PM'  },
+  { type: 'water',    title: 'Drink Afternoon Water',           completed: false, scheduled_time: '3:00 PM'  },
+  { type: 'doctor',   title: 'Doctor Appointment — Dr. Sharma', completed: false, scheduled_time: '4:30 PM'  },
+  { type: 'water',    title: 'Drink Evening Water',             completed: false, scheduled_time: '6:00 PM'  },
+  { type: 'medicine', title: 'Take Evening Medicine',           completed: false, scheduled_time: '8:00 PM'  },
 ];
 
 /**
- * Deduplicate an array of Reminder objects using a Map keyed by `id`.
- * Falls back to `title + scheduled_time` as a composite key for items
- * that may not yet have a stable DB id (e.g. optimistically inserted rows).
- * This makes duplicate rendering structurally impossible regardless of
- * how many times the effect fires (React StrictMode, network retries, etc.).
+ * Deduplicate reminders by a CONTENT key: `title::scheduled_time`.
+ *
+ * We intentionally do NOT use `id` as the primary key here because:
+ * - Each bad Supabase insert (e.g. from a previous StrictMode race) creates
+ *   rows with unique UUIDs but identical title+time content.
+ * - Keying on id would pass all duplicated DB rows through unchanged.
+ *
+ * Using title::scheduled_time guarantees that even if the Supabase table
+ * contains 14 rows from two bad inserts, only the 7 unique content items
+ * are ever passed to React state or rendered.
  */
-function dedupeById(items: Reminder[]): Reminder[] {
+function dedupeByContent(items: Reminder[]): Reminder[] {
   const seen = new Map<string, Reminder>();
   for (const item of items) {
-    const key = item.id ?? `${item.title}::${item.scheduled_time}`;
+    const key = `${item.title}::${item.scheduled_time}`;
     if (!seen.has(key)) {
       seen.set(key, item);
     }
@@ -49,7 +56,7 @@ function dedupeById(items: Reminder[]): Reminder[] {
 export function RemindersScreen() {
   const { t, speak, speakKey, stopSpeaking } = useLanguage();
   const [reminders, setReminders] = useState<Reminder[]>(() =>
-    dedupeById(loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []))
+    dedupeByContent(loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []))
   );
   const [loading, setLoading] = useState(true);
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
@@ -78,12 +85,12 @@ export function RemindersScreen() {
 
     if (!error && data && data.length > 0) {
       // Supabase has rows for today — dedupe and use as source of truth
-      const unique = dedupeById(data);
+      const unique = dedupeByContent(data);
       setReminders(unique);
       persistReminders(unique);
     } else {
       // No rows from Supabase — check localStorage before seeding
-      const local = dedupeById(loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []));
+      const local = dedupeByContent(loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []));
       if (local.length > 0) {
         // Local data exists; restore without touching Supabase
         setReminders(local);
@@ -95,7 +102,7 @@ export function RemindersScreen() {
           .insert(DEFAULT_REMINDERS.map((r) => ({ ...r })))
           .select('*');
         if (seeded) {
-          const unique = dedupeById(seeded);
+          const unique = dedupeByContent(seeded);
           setReminders(unique);
           persistReminders(unique);
         }
