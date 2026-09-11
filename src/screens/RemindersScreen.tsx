@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Calendar, Check, Clock, Droplets, Heart, Pill, Volume2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/lib/LanguageContext';
-import { REMINDER_SPOKEN_KEY } from '@/lib/translations';
+import { REMINDER_SPOKEN_KEY, REMINDER_DISPLAY_KEY } from '@/lib/translations';
 import { loadJSON, saveJSON, STORAGE_KEYS } from '@/lib/storage';
 import type { Reminder, ReminderType } from '@/types';
 
@@ -52,18 +52,27 @@ export function RemindersScreen() {
       .gte('created_at', today)
       .order('scheduled_time', { ascending: true });
 
-    if (error || !data || data.length === 0) {
-      const { data: seeded } = await supabase
-        .from('reminders')
-        .insert(DEFAULT_REMINDERS.map((r) => ({ ...r })))
-        .select('*');
-      if (seeded) {
-        setReminders(seeded);
-        persistReminders(seeded);
-      }
-    } else {
+    if (!error && data && data.length > 0) {
+      // Supabase has rows for today — use them as source of truth
       setReminders(data);
       persistReminders(data);
+    } else {
+      // No rows from Supabase — check localStorage before seeding
+      const local = loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []);
+      if (local.length > 0) {
+        // Local data already exists; use it without re-inserting into Supabase
+        setReminders(local);
+      } else {
+        // Truly first run — seed defaults into Supabase
+        const { data: seeded } = await supabase
+          .from('reminders')
+          .insert(DEFAULT_REMINDERS.map((r) => ({ ...r })))
+          .select('*');
+        if (seeded) {
+          setReminders(seeded);
+          persistReminders(seeded);
+        }
+      }
     }
     setLoading(false);
   }, [persistReminders]);
@@ -190,7 +199,9 @@ export function RemindersScreen() {
                         reminder.completed ? 'text-success-700 line-through' : colors.text
                       }`}
                     >
-                      {reminder.title}
+                      {REMINDER_DISPLAY_KEY[reminder.title]
+                        ? t(REMINDER_DISPLAY_KEY[reminder.title])
+                        : reminder.title}
                     </span>
                     <div className="flex items-center gap-1.5">
                       <Clock size={18} className={reminder.completed ? 'text-success-500' : 'text-primary-500'} />

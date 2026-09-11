@@ -301,3 +301,13 @@ export const REMINDER_SPOKEN_KEY: Record<string, string> = {
   'Drink a Glass of Water': 'spokenDrinkWater',
   'Doctor Appointment — Dr. Sharma': 'spokenDoctorAppt',
 };
+
+// Map reminder English DB titles to visual display translation keys
+// Used to render reminder card titles in the active UI language
+export const REMINDER_DISPLAY_KEY: Record<string, string> = {
+  'Take Morning Medicine': 'takeMorningMeds',
+  'Take Afternoon Medicine': 'takeAfternoonMeds',
+  'Take Evening Medicine': 'takeEveningMeds',
+  'Drink a Glass of Water': 'drinkWater',
+  'Doctor Appointment — Dr. Sharma': 'doctorAppt',
+};

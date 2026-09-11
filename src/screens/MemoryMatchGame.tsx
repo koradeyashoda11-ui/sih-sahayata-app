@@ -309,14 +309,14 @@ export function MemoryMatch({ onBack }: MemoryMatchProps) {
               disabled={card.matched}
             >
               {isFlipped ? (
-                <div className="flex flex-col items-center gap-0.5">
-                  <span className="text-3xl sm:text-4xl">{card.emoji}</span>
-                  <span className="text-[10px] font-semibold leading-tight text-primary-800 sm:text-xs">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="text-5xl sm:text-6xl">{card.emoji}</span>
+                  <span className="text-xs font-semibold leading-tight text-primary-800 sm:text-sm">
                     {card.name}
                   </span>
                 </div>
               ) : (
-                <span className="text-3xl font-bold text-primary-200">?</span>
+                <span className="text-5xl font-bold text-primary-200">?</span>
               )}
             </button>
           );
