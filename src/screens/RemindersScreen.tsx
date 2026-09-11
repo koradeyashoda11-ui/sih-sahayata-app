@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Calendar, Check, Clock, Droplets, Heart, Pill, Volume2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/lib/LanguageContext';
@@ -28,12 +28,36 @@ const DEFAULT_REMINDERS: Omit<Reminder, 'id' | 'created_at' | 'completed_at'>[] 
   { type: 'medicine', title: 'Take Evening Medicine', completed: false, scheduled_time: '8:00 PM' },
 ];
 
+/**
+ * Deduplicate an array of Reminder objects using a Map keyed by `id`.
+ * Falls back to `title + scheduled_time` as a composite key for items
+ * that may not yet have a stable DB id (e.g. optimistically inserted rows).
+ * This makes duplicate rendering structurally impossible regardless of
+ * how many times the effect fires (React StrictMode, network retries, etc.).
+ */
+function dedupeById(items: Reminder[]): Reminder[] {
+  const seen = new Map<string, Reminder>();
+  for (const item of items) {
+    const key = item.id ?? `${item.title}::${item.scheduled_time}`;
+    if (!seen.has(key)) {
+      seen.set(key, item);
+    }
+  }
+  return Array.from(seen.values());
+}
+
 export function RemindersScreen() {
   const { t, speak, speakKey, stopSpeaking } = useLanguage();
-  const [reminders, setReminders] = useState<Reminder[]>(() => loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []));
+  const [reminders, setReminders] = useState<Reminder[]>(() =>
+    dedupeById(loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []))
+  );
   const [loading, setLoading] = useState(true);
   const [celebratingId, setCelebratingId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+
+  // Prevents React StrictMode's double-invocation from racing two concurrent
+  // Supabase inserts before either has had a chance to write to localStorage.
+  const seedingRef = useRef(false);
 
   useEffect(() => {
     const loaded = loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []);
@@ -53,25 +77,29 @@ export function RemindersScreen() {
       .order('scheduled_time', { ascending: true });
 
     if (!error && data && data.length > 0) {
-      // Supabase has rows for today — use them as source of truth
-      setReminders(data);
-      persistReminders(data);
+      // Supabase has rows for today — dedupe and use as source of truth
+      const unique = dedupeById(data);
+      setReminders(unique);
+      persistReminders(unique);
     } else {
       // No rows from Supabase — check localStorage before seeding
-      const local = loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []);
+      const local = dedupeById(loadJSON<Reminder[]>(STORAGE_KEYS.reminders, []));
       if (local.length > 0) {
-        // Local data already exists; use it without re-inserting into Supabase
+        // Local data exists; restore without touching Supabase
         setReminders(local);
-      } else {
-        // Truly first run — seed defaults into Supabase
+      } else if (!seedingRef.current) {
+        // Truly first run AND no concurrent seed in flight (StrictMode guard)
+        seedingRef.current = true;
         const { data: seeded } = await supabase
           .from('reminders')
           .insert(DEFAULT_REMINDERS.map((r) => ({ ...r })))
           .select('*');
         if (seeded) {
-          setReminders(seeded);
-          persistReminders(seeded);
+          const unique = dedupeById(seeded);
+          setReminders(unique);
+          persistReminders(unique);
         }
+        // Leave seedingRef.current = true so the second StrictMode run is skipped
       }
     }
     setLoading(false);
